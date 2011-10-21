@@ -1,0 +1,39 @@
+Lid
+
+lid (n):
+  1. A removable or hinged cover for a hollow receptacle or box.
+  2. An inept or otherwise incompetent amateur radio operator.
+
+What is it?
+-----------
+
+Lid aims to be an Perl-based all-encompassing helper for all things amateur radio. The plan is to have a single
+daemon which can monitor the DX cluster, APRS messages, PSKReporter spots, WSPR spots, etc., and then record/
+report/alert based on that information.
+
+Why 'lid'?
+----------
+
+Because I'm unimaginative.
+
+Can I use it?
+-------------
+
+In short: No.
+
+Not so short: Not just yet...
+
+This is still very much alpha at the moment. All that is in place is the framework for loading modules and passing
+messages between them.
+
+If you *really* want to try it (and seriously, it doesn't do anything yet!), checkout a copy of the code and run
+it:-
+
+ # ./lid.pl
+
+...and watch the pretty colourful debug messages fly by. By default, it'll start a TCP listener on port 4321.
+
+Author and Copyright
+--------------------
+(c)2011 Andy Smith M0VKG <andy@m0vkg.org.uk>
+No official copyright statement yet, but consider it released under the same terms as Perl itself.
