@@ -7,6 +7,7 @@ use warnings;
 require Exporter;
 use Moose;
 use Switch;
+use Carp;
 use POE qw( Wheel::Run );
 use Data::Dumper;
 use Data::GUID;
@@ -17,6 +18,7 @@ use Ham::Lid::Console;
 use Ham::Lid::Daemon;
 use Ham::Lid::Auth;
 use Ham::Lid::Example;
+use XML::Simple;
 use base qw(Ham::Lid::Debug);
 our @ISA = qw(Exporter);
 
@@ -51,6 +53,7 @@ has 'sessions' => (is => 'rw');
 has 'id' => (is => 'rw');
 has 'buffer' => (is => 'rw');
 has 'register_table' => (is => 'rw');
+has 'config' => (is => 'rw');
 
 sub new {
 
@@ -83,6 +86,9 @@ sub new {
     }
   ));
 
+  $self->load_config;
+  $self->load_modules;
+
   # Start console
   #my $console = new Ham::Lid::Console($self);
   my $daemon  = new Ham::Lid::Daemon($self, "daemon_4321");
@@ -93,6 +99,65 @@ sub new {
   $self->start();
   $self->debug("[".$self->id."] new() finished.");
   return $self;
+}
+
+sub load_config {
+  my ($self) = @_;
+
+  $self->debug("load_config() called.");
+  my $x = XML::Simple->new;
+
+  my $l = ['/etc/lid/config.xml', '~/.lid/config.xml', './config.xml'];
+
+  foreach my $location (@{$l}) {
+    $self->debug("Attempting to load configuration file from ".$location."...");
+    if(-f $location) {
+      $self->debug("Found ".$location);
+      $self->config($x->XMLin($location));
+      if($@) {
+        $self->error("Error loading ".$location."!");
+      } else {
+        $self->debug("Successfully loaded config from ".$location.".");
+        $self->debug("load_config() finished.");
+        return;
+      }
+    }
+  }
+
+  $self->error("Couldn't find a working configuration file!");
+  croak "Couldn't find a working configuration file!\n";
+
+}
+
+sub load_module {
+  my ($self, $module, $name, $options) = @_;
+
+  $self->debug("load_module() called.");
+  $self->debug("load_module(): Loading ".$name."...");
+  $self->debug("load_module(): Type is ".$module);
+  $self->debug("load_module(): Name is ".$name);
+  $self->debug("load_module(): Options are ".Dumper($options));
+  $self->debug("load_module() finished.");
+}
+
+sub load_modules {
+  my ($self) = @_;
+
+  $self->debug("load_modules() called.");
+  if(!defined($self->config->{modules})) {
+    $self->error("No modules defined in configuration!");
+    croak "No modules defined in configuration!";
+  }
+
+  foreach my $module (keys %{$self->config->{modules}{module}}) {
+    my $type = $self->config->{modules}{module}{$module}{type};
+    my $options = $self->config->{modules}{module}{$module}{options};
+    $self->debug("Calling load_module() for ".$module."...");
+    $self->load_module($type, $module, $options);
+  }
+  die;
+
+  $self->debug("load_modules() finished.");
 }
 
 sub start {
