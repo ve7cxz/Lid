@@ -99,6 +99,13 @@ sub new {
   $self->session(POE::Session->create(
     inline_states => {
       _start => sub { 
+        $self->debug("[".$self->id."] _start triggered");
+
+        $_[KERNEL]->alias_set($self->name);
+
+        $self->debug("[".$self->id."] Registering with manager...");
+        $self->out($self->create_message($self->manager->id, "register", {'name' => $self->name, 'type' => ref $self, 'manager' => $self->manager->id }));
+
         my $io_wheel = POE::Wheel::ReadWrite->new(
           Handle => $socket,
           InputEvent => "on_client_input",
@@ -106,15 +113,44 @@ sub new {
         );
         $_[HEAP]{client} { $io_wheel->ID() } = $io_wheel;
         $self->wheel($io_wheel);
+        $_[KERNEL]->yield('tick');
       },
       on_client_input => sub {
+        $self->debug("[".$self->id."] on_client_input triggered");
         my ($input, $wheel_id) = @_[ARG0, ARG1];
         $self->client_in($input);
       },
       on_client_error => sub {
+        $self->debug("[".$self->id."] on_client_error triggered");
         my $wheel_id = $_[ARG3];
         $self->client_error($wheel_id);
         delete $_[HEAP]{client}{$wheel_id};
+        $_[KERNEL]->yield('shutdown');
+      },
+      tick => sub {
+        $self->debug("[".$self->id."] tick triggered");
+        $_[KERNEL]->delay(tick => 1);
+      },
+      in => sub {
+        $self->debug("[".$self->id."] in triggered");
+        $self->buffer->in($_[ARG0]);
+      },
+      shutdown => sub {
+        $self->debug("[".$self->id."] shutdown triggered");
+        $self->debug("[".$self->id."] Session shutdown called.");
+        my ($kernel, $session, $heap) = @_[KERNEL, SESSION, HEAP];
+        $self->debug("[".$self->id."] Deleting from heap...");
+        delete $heap->{client};
+        $self->wheel(undef);
+        $self->debug("[".$self->id."] Removing alias...");
+        $kernel->alias_remove($self->name);
+        $self->debug("[".$self->id."] Disabling tick...");
+        $kernel->delay(tick => undef);
+        $self->session(undef);
+      },
+      _stop   => sub {
+        $self->debug("[".$self->id."] _stop triggered");
+        $self->debug("[".$self->id."] Session stopped.");
       },
     }
   ));
@@ -122,13 +158,7 @@ sub new {
   $self->debug("[".$self->id."] new() called.");
   $self->debug("[".$self->id."] ID is ".$self->id);
   $self->debug("[".$self->id."] Name is ".$self->name);
-  $self->debug("[".$self->id."] Manager is ".$self->manager->id);
-  $self->debug("[".$self->id."] Buffer is ".$self->buffer);
-
-  $self->debug("[".$self->id."] Registering with manager...");
-  #$self->manager->register($self->id, $self->name, "daemon", $self->manager->id);
-  my $r = $self->create_message($self->manager->id, "register", {'name' => $self->name, 'type' => ref $self, 'manager' => $self->manager->id, 'buffer' => sub { $self->buffer->in($_[0]); }});
-  $self->out($r);
+  $self->debug("[".$self->id."] Buffer is ".$self->buffer->id);
 
   return $self;
 }
@@ -241,7 +271,7 @@ sub out {
     $self->client_out($msg);
   } else {
     $self->debug("[".$self->id."] Destination is not the connected client. I am ".$self->id.", and the destination is ".$msg->destination.".");
-    $self->manager->buffer->in($msg);
+    $poe_kernel->post($poe_kernel->alias_resolve('manager'), 'in', $msg);
   }
   $self->debug("[".$self->id."] out() finished.");
 }

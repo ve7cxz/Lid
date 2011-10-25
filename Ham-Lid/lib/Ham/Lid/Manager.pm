@@ -1,5 +1,7 @@
 package Ham::Lid::Manager;
 
+# Things are shaping up to be pretty odd...
+
 use 5.012004;
 use strict;
 use warnings;
@@ -13,12 +15,8 @@ use Data::Dumper;
 use Data::GUID;
 use Ham::Lid::Debug;
 use Ham::Lid::Session;
+use Module::Load;
 use POE::Wheel::ReadWrite;
-use Ham::Lid::Console;
-use Ham::Lid::Daemon;
-use Ham::Lid::Auth;
-use Ham::Lid::Example;
-use Ham::Lid::DXCluster;
 use XML::Simple;
 use base qw(Ham::Lid::Debug);
 our @ISA = qw(Exporter);
@@ -76,14 +74,19 @@ sub new {
 
   $self->session(POE::Session->create(
     inline_states => {
-      _start  => sub { $_[KERNEL]->yield("next") },
-      next    => sub {
-        $self->debug("[".$self->id."] Kernel tick");
-        $_[KERNEL]->delay(next => 1);
+      _start => sub {
+        $self->debug("_start triggered");
+        $_[KERNEL]->alias_set("manager");
+        $_[KERNEL]->yield("tick");
       },
-      input   => sub {
-        $self->buffer->in(@_);
-      }
+      tick => sub {
+        $self->debug("tick triggered");
+        $self->debug("Kernel tick");
+        $_[KERNEL]->delay(tick => 1);
+      },
+      in   => sub {
+        $self->buffer->in($_[ARG0]);
+      },
     }
   ));
 
@@ -92,11 +95,11 @@ sub new {
 
   # Start console
   #my $console = new Ham::Lid::Console($self);
-  new Ham::Lid::Daemon($self, "daemon_4321");
-  new Ham::Lid::Auth($self, "authenticator");
-  new Ham::Lid::Console($self, "console");
-  new Ham::Lid::Example($self, "example");
-  new Ham::Lid::DXCluster($self, "dxcluster", "localhost", "7300", "M0VKG");
+  #new Ham::Lid::Daemon($self, "daemon_4321");
+  #new Ham::Lid::Auth($self, "authenticator");
+  #new Ham::Lid::Console($self, "console");
+  #new Ham::Lid::Example($self, "example");
+  #new Ham::Lid::DXCluster($self, "dxcluster", "localhost", "7300", "M0VKG");
 
   $self->start();
   $self->debug("[".$self->id."] new() finished.");
@@ -107,7 +110,7 @@ sub load_config {
   my ($self) = @_;
 
   $self->debug("load_config() called.");
-  my $x = XML::Simple->new;
+  my $x = XML::Simple->new(ForceArray => 1);
 
   my $l = ['/etc/lid/config.xml', '~/.lid/config.xml', './config.xml'];
 
@@ -139,7 +142,28 @@ sub load_module {
   $self->debug("load_module(): Type is ".$module);
   $self->debug("load_module(): Name is ".$name);
   $self->debug("load_module(): Options are ".Dumper($options));
+
+  $self->debug("load_module(): Attempting to load $name (Ham::Lid::$module)...");
+  my $m = 'Ham::Lid::'.$module;
+  $self->debug("load_module(): load $m...");
+  load $m;
+
+  if($@) {
+    $self->error("load_module(): Error loading $name!");
+  } else {
+    $self->debug("load_module(): Loaded $name.");
+    $self->debug("load_module(): Attempting to start $name (Ham::Lid::$module)...");
+    if($m->new($self, $name, @{$options}[0])) {
+      $self->debug("load_module(): Started $name.");
+      $self->debug("load_module() finished.");
+      return 1;
+    } else {
+      $self->error("load_module(): Error starting $name!");
+    }
+  }
+
   $self->debug("load_module() finished.");
+  return;
 }
 
 sub load_modules {
@@ -151,9 +175,9 @@ sub load_modules {
     croak "No modules defined in configuration!";
   }
 
-  foreach my $module (keys %{$self->config->{modules}{module}}) {
-    my $type = $self->config->{modules}{module}{$module}{type};
-    my $options = $self->config->{modules}{module}{$module}{options};
+  foreach my $module (keys %{$self->config->{modules}[0]{module}}) {
+    my $type = $self->config->{modules}[0]{module}{$module}{type};
+    my $options = $self->config->{modules}[0]{module}{$module}{options};
     $self->debug("Calling load_module() for ".$module."...");
     $self->load_module($type, $module, $options);
   }
@@ -230,7 +254,7 @@ sub list {
   my $r;
   foreach my $module (keys %{$self->{register_table}}) {
     $self->debug("list(): ".$module);
-    %{$r}->{$module} = $self->{register_table}{$module}{'name'};
+    $r->{$module} = $self->{register_table}{$module}{'name'};
   }
 
   $self->out($self->create_message($msg->source, "list_response", $r));
@@ -305,8 +329,9 @@ sub out {
   $self->debug("[".$self->id."] out() called.");
   $self->debug("[".$self->id."] Sending message to ".$msg->destination." of type ".$msg->type.".");
   # We're the manager, so we have to find the relevant buffer
-  my $output_buffer = $self->{register_table}{$msg->destination}{buffer};
-  &$output_buffer($msg);
+  my $name = $self->{register_table}{$msg->destination}{name};
+  $self->debug("Name is $name");
+  $poe_kernel->post($poe_kernel->alias_resolve($name), 'in', $msg);
   $self->debug("[".$self->id."] out() finished.");
 }
 

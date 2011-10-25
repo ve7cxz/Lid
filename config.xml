@@ -1,11 +1,12 @@
 <config name="lid" version="0.01">
   <modules>
     <module name="daemon_4321" type="Daemon">
-      <options address="127.0.0.1" port="4321" type="tcp" />
-      <authentication use="auth_mysql" />
+      <options address="0.0.0.0" port="4321" type="tcp">
+        <authentication use="auth_mysql" />
+      </options>
     </module>
-    <module name="auth_mysql" type="Auth">
-      <options type="mysql" hostname="localhost" port="3306" username="dbuser" password="dbpass" database="lid" table="auth" />
+    <module name="dxcluster_gb7mbc" type="DXCluster">
+      <options hostname="gb7mbc.spoo.org" port="8000" callsign="M0VKG" />
     </module>
     <module name="dxcluster" type="DXCluster">
       <options hostname="localhost" port="7300" callsign="M0VKG" />
@@ -23,6 +24,10 @@
         </and>
       </filter>
     </module>
+    <!--
+    <module name="auth_mysql" type="Auth">
+      <options type="mysql" hostname="localhost" port="3306" username="dbuser" password="dbpass" database="lid" table="auth" />
+    </module>
     <module name="storage_mysql" type="Storage">
       <options type="mysql" hostname="localhost" port="3306" username="dbuser" password="dbpass" database="lid" />
       <subscriptions>
@@ -34,6 +39,7 @@
         </method>
       </methods>
     </module>
+    -->
   </modules>
   <queries>
     <query name="dx_add">

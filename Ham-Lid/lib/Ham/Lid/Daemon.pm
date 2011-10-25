@@ -59,7 +59,7 @@ has 'count' => (is => 'rw');
 
 sub new {
 
-  my ($class, $manager, $name) = @_;
+  my ($class, $manager, $name, $options) = @_;
 
   my $g = Data::GUID->new;
   my $self = {
@@ -75,7 +75,7 @@ sub new {
     croak "No manager passed to session.";
   } else {
     $self->manager($manager);
-    $self->debug("Manager passed (ID ".$manager->id.")");
+    $self->debug("Manager passed.");
   }
 
   if(!defined($name)) {
@@ -93,23 +93,32 @@ sub new {
   $self->debug("new() called.");
   $self->debug("ID is ".$self->id);
   $self->debug("Name is ".$self->name);
-  $self->debug("Manager is ".$self->manager->id);
-  $self->debug("Buffer is ".$self->buffer);
+  $self->debug("Buffer is ".$self->buffer->id);
 
   $self->session(POE::Session->create(
     inline_states => {
       _start => sub {
+        $self->debug("_start triggered");
+        $_[KERNEL]->alias_set($self->name);
+        $self->debug("Registering with manager...");
+        $self->out($self->create_message($manager->id, "register", {'name' => $self->name, 'type' => ref $self, 'manager' => $self->manager->id}));
+
         $_[HEAP]{server} = POE::Wheel::SocketFactory->new(
-          BindPort => 4321,
-          SuccessEvent => "on_client_accept",
-          FailureEvent => "on_server_error",
+          BindAddress   => $options->{address},
+          BindPort      => $options->{port},
+          SuccessEvent  => "on_client_accept",
+          FailureEvent  => "on_server_error",
         );
+
+        $_[KERNEL]->yield('tick');
       },
       on_client_accept => sub {
+        $self->debug("on_client_accept triggered");
         Ham::Lid::Client->new($self->manager, $self->name."_client_".$self->count, $_[ARG0]);
         $self->count($self->count + 1);
       },
       on_server_error => sub {
+        $self->debug("on_server_error triggered");
         my ($op, $errnum, $errstr) = @_[ARG0, ARG1, ARG2];
         $self->error("Server $op error $errnum: $errstr");
         delete $_[HEAP]{server};
@@ -121,24 +130,19 @@ sub new {
           SuccessEvent => "on_client_accept",
           FailureEvent => "on_server_error",
         );
-
       },
+      in => sub {
+        $self->debug("in triggered");
+        $self->buffer->in($_[ARG0]);
+      },
+      tick => sub {
+        $self->debug("tick triggered");
+        $_[KERNEL]->delay(tick => 1);
+      }
     },
   ));
 
-  $self->debug("Registering with manager...");
-  #$self->manager->register($self->id, $self->name, "daemon", $self->manager->id);
-  $self->out($self->create_message($self->manager->id, "register", {'name' => $self->name, 'type' => ref $self, 'manager' => $self->manager->id, 'buffer' => sub { $self->buffer->in($_[0]); }}));
-
   return $self;
-}
-
-sub msg {
-  my ($self, $msg) = @_;
-
-  $self->debug("msg() called.");
-
-  $self->debug("msg is ".Dumper($msg));
 }
 
 sub in {
@@ -194,7 +198,7 @@ sub out {
     $self->error("Message is not of type Ham::Lid::Message!");
     return 0;
   }
-  $self->manager->buffer->in($msg);
+  $poe_kernel->post($poe_kernel->alias_resolve("manager"), 'in', $msg);
   $self->debug("out() finished.");
 }
 

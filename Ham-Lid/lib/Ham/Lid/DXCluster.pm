@@ -62,7 +62,7 @@ has 'client_buffer' => (is => 'rw');
 
 sub new {
 
-  my ($class, $manager, $name, $hostname, $port, $callsign) = @_;
+  my ($class, $manager, $name, $options) = @_;
 
   my $g = Data::GUID->new;
   my $self = {
@@ -89,27 +89,27 @@ sub new {
     $self->debug("Name passed (".$self->name.")");
   }
 
-  if(!defined($hostname)) {
+  if(!defined($options->{hostname})) {
     $self->error("No hostname passed to session.");
     croak "No hostname passed to session.";
   } else {
-    $self->hostname($hostname);
+    $self->hostname($options->{hostname});
     $self->debug("Hostname passed (".$self->hostname.")");
   }
 
-  if(!defined($port)) {
+  if(!defined($options->{port})) {
     $self->error("No port passed to session.");
     croak "No port passed to session.";
   } else {
-    $self->port($port);
+    $self->port($options->{port});
     $self->debug("Port passed (".$self->port.")");
   }
 
-  if(!defined($callsign)) {
+  if(!defined($options->{callsign})) {
     $self->error("No callsign passed to session.");
     croak "No callsign passed to session.";
   } else {
-    $self->callsign($callsign);
+    $self->callsign($options->{callsign});
     $self->debug("Callsign passed (".$self->callsign.")");
   }
 
@@ -144,11 +144,16 @@ sub init {
       _start      => sub {
         $self->debug("[".$self->id."] Starting client...");
 
+        $_[KERNEL]->alias_set($self->name);
+
+        $self->debug("Registering with manager...");
+        $self->out($self->create_message($self->manager->id, "register", {'name' => $self->name, 'type' => ref $self, 'manager' => $self->manager->id}));
+
         $_[HEAP]{server} = POE::Wheel::SocketFactory->new(
           #RemoteAddress     => "gb7mbc.spoo.org",
           #RemotePort        => 8000,
-          RemoteAddress     => "localhost",
-          RemotePort        => 7300,
+          RemoteAddress     => $self->hostname,
+          RemotePort        => $self->port,,
           #Started           => sub { $self->debug("[".$self->id."] Started connection to ".$self->hostname.", port ".$self->port."."); },
           SuccessEvent      => "on_connect",
           FailureEvent      => "on_failure",
@@ -191,9 +196,10 @@ sub init {
       next    => sub {
         $self->debug("Tick.");
         $self->emit("tick");
-        $_[KERNEL]->delay(next => 2);
+        $_[KERNEL]->delay(next => 1);
       },
-      input   => sub {
+      in   => sub {
+        $self->buffer->in($_[ARG0]);
       },
       shutdown => sub {
         $self->debug("[".$self->id."] Session shutdown called.");
@@ -207,9 +213,6 @@ sub init {
       },
     }
   ));
-
-  $self->debug("Registering with manager...");
-  $self->out($self->create_message($self->manager->id, "register", {'name' => $self->name, 'type' => ref $self, 'manager' => $self->manager->id, 'buffer' => sub { $self->buffer->in($_[0]); }}));
 
   $self->debug("init() finished.");
 }
@@ -343,6 +346,7 @@ sub out {
   $self->debug("[".$self->id."] out() called.");
   $self->debug("[".$self->id."] Sending message to ".$msg->destination." of type ".$msg->type.".");
   $self->manager->buffer->in($msg);
+  $poe_kernel->post($poe_kernel->alias_resolve('manager'), 'in', $msg);
   $self->debug("[".$self->id."] out() finished.");
 }
 
