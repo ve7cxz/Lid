@@ -1,13 +1,54 @@
 <config name="lid" version="0.01">
   <modules>
-    <module name="daemon" type="Daemon">
+    <module name="daemon_4321" type="Daemon">
       <options address="127.0.0.1" port="4321" type="tcp" />
+      <authentication use="auth_mysql" />
     </module>
-    <module name="auth" type="Auth">
-      <options type="dummy"/>
+    <module name="auth_mysql" type="Auth">
+      <options type="mysql" hostname="localhost" port="3306" username="dbuser" password="dbpass" database="lid" table="auth" />
     </module>
     <module name="dxcluster" type="DXCluster">
       <options hostname="localhost" port="7300" callsign="M0VKG" />
+      <filter name="m0vkg_dx_filter">
+        <and>
+          <field name="callsign">
+            <or>
+              <equals>M0VKG</equals>
+              <equals>2E0VKG</equals>
+            </or>
+          </field>
+          <field name="frequency">
+            <starts>7</starts>
+          </field>
+        </and>
+      </filter>
+    </module>
+    <module name="storage_mysql" type="Storage">
+      <options type="mysql" hostname="localhost" port="3306" username="dbuser" password="dbpass" database="lid" />
+      <subscriptions>
+        <subscription to="dxcluster" event="dx_spot" filter="m0vkg_dx_filter" subscriber="storage_dx_spot_add" />
+      </subscriptions>
+      <methods>
+        <method name="storage_dx_spot_add" type="query">
+          <query name="dx_add"/>
+        </method>
+      </methods>
     </module>
   </modules>
+  <queries>
+    <query name="dx_add">
+      <inputs>
+        <input field="callsign" type="text" />
+        <input field="spotter" type="text" />
+        <input field="frequency" type="text" />
+        <input field="timestamp" type="text" />
+        <input field="comment" type="text" />
+        <input field="locator" type="text" optional="true" />
+      </inputs>
+      <outputs>
+        <output field="id" type="int" />
+      </outputs>
+      <query method="insert" inputs="callsign,spotter,frequency,timestamp,comment,locator" outputs="id" />
+    </query>
+  </queries>
 </config>

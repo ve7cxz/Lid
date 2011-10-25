@@ -1,4 +1,4 @@
-package Ham::Lid::DXCluster;
+package Ham::Lid::Storage::DBI;
 
 use 5.012004;
 use strict;
@@ -47,18 +47,18 @@ BEGIN {
 has 'id' => (is => 'rw');
 has 'name' => (is => 'rw');
 has 'session' => (is => 'rw');
-has 'client_session' => (is => 'rw');
 has 'callbacks' => (is => 'rw');
 has 'buffer' => (is => 'rw');
 has 'manager' => (is => 'rw');
 has 'heap' => (is => 'rw');
 has 'registered' => (is => 'rw');
 has 'subscribers' => (is => 'rw');
-has 'callsign' => (is => 'rw');
+has 'type' => (is => 'rw');
 has 'hostname' => (is => 'rw');
 has 'port' => (is => 'rw');
-has 'cluster_name' => (is => 'rw');
-has 'client_buffer' => (is => 'rw');
+has 'username' => (is => 'rw');
+has 'password' => (is => 'rw');
+has 'database' => (is => 'rw');
 
 sub new {
 
@@ -89,6 +89,14 @@ sub new {
     $self->debug("Name passed (".$self->name.")");
   }
 
+  if(!defined($type)) {
+    $self->error("No type passed to session.");
+    croak "No type passed to session.";
+  } else {
+    $self->type($type);
+    $self->debug("Type passed (".$self->type.")");
+  }
+
   if(!defined($hostname)) {
     $self->error("No hostname passed to session.");
     croak "No hostname passed to session.";
@@ -105,12 +113,28 @@ sub new {
     $self->debug("Port passed (".$self->port.")");
   }
 
-  if(!defined($callsign)) {
-    $self->error("No callsign passed to session.");
-    croak "No callsign passed to session.";
+  if(!defined($username)) {
+    $self->error("No username passed to session.");
+    croak "No username passed to session.";
   } else {
-    $self->callsign($callsign);
-    $self->debug("Callsign passed (".$self->callsign.")");
+    $self->username($username);
+    $self->debug("Username passed (".$self->username.")");
+  }
+
+  if(!defined($password)) {
+    $self->error("No username passed to session.");
+    croak "No username passed to session.";
+  } else {
+    $self->password($password);
+    $self->debug("Password passed (".$self->password.")");
+  }
+
+  if(!defined($database)) {
+    $self->error("No database passed to session.");
+    croak "No database passed to session.";
+  } else {
+    $self->database($database);
+    $self->debug("Database passed (".$self->database.")");
   }
 
   $self->debug("new() called.");
@@ -120,14 +144,6 @@ sub new {
   return $self;
 }
 
-sub msg {
-  my ($self, $msg) = @_;
-
-  $self->debug("msg() called.");
-
-  $self->debug("msg is ".Dumper($msg));
-}
-
 sub init {
 
   my ($self) = @_;
@@ -135,58 +151,11 @@ sub init {
 
   # Create buffers to hold data
   $self->buffer(Ham::Lid::Buffer->new);
-  $self->client_buffer(Ham::Lid::Buffer->new);
   $self->buffer->register_callback("out", "default", sub { $self->input($_[0]); });
-  $self->client_buffer->register_callback("out", "default", sub { $self->client_input($_[0]); });
 
   $self->session(POE::Session->create(
     inline_states => {
       _start      => sub {
-        $self->debug("[".$self->id."] Starting client...");
-
-        $_[HEAP]{server} = POE::Wheel::SocketFactory->new(
-          #RemoteAddress     => "gb7mbc.spoo.org",
-          #RemotePort        => 8000,
-          RemoteAddress     => "localhost",
-          RemotePort        => 7300,
-          #Started           => sub { $self->debug("[".$self->id."] Started connection to ".$self->hostname.", port ".$self->port."."); },
-          SuccessEvent      => "on_connect",
-          FailureEvent      => "on_failure",
-        );
-
-        $self->debug("[".$self->id."] Client started.");        
-        $_[KERNEL]->yield("next");
-      },
-      on_connect  => sub {
-        $self->debug("[".$self->id."] Connected.");
-        my $client_socket = $_[ARG0];
-
-        my $wheel = POE::Wheel::ReadWrite->new(
-          Handle      => $client_socket,
-          InputEvent  => "on_input",
-          ErrorEvent  => "on_error",
-          Filter      => POE::Filter::Stream->new(),
-        );
-        #$_[HEAP]{client}{$wheel->ID()} = $wheel;
-        $_[HEAP]{client} = $wheel;
-      },
-      on_input    => sub {
-        $self->debug("[".$self->id."] on_input event called.");
-        $self->client_input($_[ARG0]);
-      },
-      on_failure  => sub {
-        $self->debug("[".$self->id."] on_failure event called.");
-        $self->debug("[".$self->id."] Could not connect to ".$self->hostname.", port ".$self->port.".");
-        $self->out($self->create_message($self->manager->id, "unregister"));
-        $_[KERNEL]->post($self->session, 'shutdown');
-        $_[KERNEL]->yield('shutdown');
-      },
-      on_error    => sub {
-        $self->debug("[".$self->id."] on_error event called.");
-        $self->debug("[".$self->id."] Error in connection to ".$self->hostname.", port ".$self->port.".");
-        $self->out($self->create_message($self->manager->id, "unregister"));
-        $_[KERNEL]->post($self->session, 'shutdown');
-        $_[KERNEL]->yield('shutdown');
       },
       next    => sub {
         $self->debug("Tick.");
@@ -235,15 +204,6 @@ sub input {
   $self->debug("[".$self->id."] input() finished.");
 }
 
-sub client_input {
-  my ($self, $data) = @_;
-  $self->debug("[".$self->id."] client_input() called.");
-
-  $self->client_process($data);
-
-  $self->debug("[".$self->id."] client_input() finished.");
-}
-
 sub process {
 
   my ($self, $data) = @_;
@@ -266,35 +226,6 @@ sub process {
   }
 
   $self->debug("[".$self->id."] process() finished.");
-}
-
-sub client_process {
-
-  my ($self, $data) = @_;
-
-  $self->debug("[".$self->id."] client_process() called.");
-
-  print Dumper($data);
-
-  my @lines = split(/\n/, $data);
-
-  foreach my $line (@lines) {
-    if($line =~ m/^login: /) {
-      $self->debug("[".$self->id."] Got DX cluster login prompt. Sending callsign (".$self->callsign.")...");
-      $self->client_out($self->callsign."\n");
-    } elsif($line =~ m/^(\S+)>/) {
-      $self->debug("[".$self->id."] Got DX cluster prompt: ".$1);
-      $self->cluster_name($1);
-    } elsif($line =~ m/^DX de (\w+):\s+(\d+.\d+)\s+(\w+)\s+(.*)\s+(\d+Z)\s?(\w*)/) {
-      $self->debug("[".$self->id."] Got DX spot from $1 (in $6) of $3 on $2 at $5 (comment: $4).");
-    } elsif($line =~ m/^To LOCAL de (\w+):\s(.*)/) {
-      $self->debug("[".$self->id."] Got LOCAL ANNOUNCE from $1: $2.");
-    }
-  }
-
-  $self->client_buffer(undef);
-
-  $self->debug("[".$self->id."] client_process() finished.");
 }
 
 sub subscribe {
@@ -344,18 +275,6 @@ sub out {
   $self->debug("[".$self->id."] Sending message to ".$msg->destination." of type ".$msg->type.".");
   $self->manager->buffer->in($msg);
   $self->debug("[".$self->id."] out() finished.");
-}
-
-sub client_out {
-  my ($self, $msg) = @_;
-
-  $self->debug("[".$self->id."] client_out() called.");
-
-  $self->debug("[".$self->id."] Sending data...");
-
-  $self->session->get_heap->{client}->put($msg);
-
-  $self->debug("[".$self->id."] client_out() finished.");
 }
 
 1;
