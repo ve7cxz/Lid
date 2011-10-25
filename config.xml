@@ -1,0 +1,13 @@
+<config name="lid" version="0.01">
+  <modules>
+    <module name="daemon" type="Daemon">
+      <options address="127.0.0.1" port="4321" type="tcp" />
+    </module>
+    <module name="auth" type="Auth">
+      <options type="dummy"/>
+    </module>
+    <module name="dxcluster" type="DXCluster">
+      <options hostname="localhost" port="7300" callsign="M0VKG" />
+    </module>
+  </modules>
+</config>

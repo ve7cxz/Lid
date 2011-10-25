@@ -36,20 +36,20 @@ sub debug {
   my ($self, $msg) = @_;
 
   open (DEBUG, '>>debug.log');
-  print color 'blue';
-  print "DEBUG   ";
-  print color 'reset';
-  print ": (";
-  print color 'magenta';
+  print STDERR color 'blue';
+  print STDERR "DEBUG   ";
+  print STDERR color 'reset';
+  print STDERR ": (";
+  print STDERR color 'magenta';
   if(ref($self)) {
-    print ref $self;
+    print STDERR ref $self;
     print DEBUG ref $self;
   } else {
-    print $self;
+    print STDERR $self;
     print DEBUG $self;
   }
-  print color 'reset';
-  print "): ".$msg."\n";
+  print STDERR color 'reset';
+  print STDERR "): ".$msg."\n";
   print DEBUG " ".$msg."\n";
   close (DEBUG);
 
@@ -59,37 +59,46 @@ sub error {
   
   my ($self, $msg) = @_;
 
-  print color 'red';
-  print "ERROR   ";
-  print color 'reset';
-  print ": (";
-  print color 'magenta';
+  open (ERROR, '>>debug.log');
+  print STDERR color 'red';
+  print STDERR "ERROR   ";
+  print STDERR color 'reset';
+  print STDERR ": (";
+  print STDERR color 'magenta';
   if(ref($self)) {
-    print ref $self;
+    print STDERR ref $self;
+    print ERROR ref $self;
   } else {
-    print $self;
+    print STDERR $self;
+    print ERROR $self;
   }
-  print color 'reset';
-  print "): ".$msg."\n";
-
+  print STDERR color 'reset';
+  print STDERR "): ".$msg."\n";
+  print ERROR " ".$msg."\n";
+  close(ERROR);
 }
 
 sub warning {
   
   my ($self, $msg) = @_;
 
-  print color 'yellow';
-  print "WARNING ";
-  print color 'reset';
-  print ": (";
-  print color 'magenta';
+  open (WARNING, '>>debug.log');
+  print STDERR color 'yellow';
+  print STDERR "WARNING ";
+  print STDERR color 'reset';
+  print STDERR ": (";
+  print STDERR color 'magenta';
   if(ref($self)) {
-    print ref $self;
+    print STDERR ref $self;
+    print WARNING ref $self;
   } else {
-    print $self;
+    print STDERR $self;
+    print WARNING $self;
   }
-  print color 'reset';
-  print "): ".$msg."\n";
+  print STDERR color 'reset';
+  print STDERR "): ".$msg."\n";
+  print WARNING " ".$msg."\n";
+  close(WARNING);
 
 }
 
@@ -97,18 +106,23 @@ sub notice {
   
   my ($self, $msg) = @_;
 
-  print color 'green';
-  print "NOTICE  ";
-  print color 'reset';
-  print ": (";
-  print color 'magenta';
+  open (NOTICE, '>>debug.log');
+  print STDERR color 'green';
+  print STDERR "NOTICE  ";
+  print STDERR color 'reset';
+  print STDERR ": (";
+  print STDERR color 'magenta';
   if(ref($self)) {
-    print ref $self;
+    print STDERR ref $self;
+    print NOTICE ref $self;
   } else {
-    print $self;
+    print STDERR $self;
+    print NOTICE $self;
   }
-  print color 'reset';
-  print "): ".$msg."\n";
+  print STDERR color 'reset';
+  print STDERR "): ".$msg."\n";
+  print NOTICE " ".$msg."\n";
+  close(NOTICE);
 
 }
 

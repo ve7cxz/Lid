@@ -18,6 +18,7 @@ use Ham::Lid::Console;
 use Ham::Lid::Daemon;
 use Ham::Lid::Auth;
 use Ham::Lid::Example;
+use Ham::Lid::DXCluster;
 use XML::Simple;
 use base qw(Ham::Lid::Debug);
 our @ISA = qw(Exporter);
@@ -91,10 +92,11 @@ sub new {
 
   # Start console
   #my $console = new Ham::Lid::Console($self);
-  my $daemon  = new Ham::Lid::Daemon($self, "daemon_4321");
-  my $auth    = new Ham::Lid::Auth($self, "authenticator");
-  my $console = new Ham::Lid::Console($self, "console");
-  my $example = new Ham::Lid::Example($self, "example");
+  new Ham::Lid::Daemon($self, "daemon_4321");
+  new Ham::Lid::Auth($self, "authenticator");
+  new Ham::Lid::Console($self, "console");
+  new Ham::Lid::Example($self, "example");
+  new Ham::Lid::DXCluster($self, "dxcluster", "localhost", "7300", "M0VKG");
 
   $self->start();
   $self->debug("[".$self->id."] new() finished.");
@@ -155,7 +157,6 @@ sub load_modules {
     $self->debug("Calling load_module() for ".$module."...");
     $self->load_module($type, $module, $options);
   }
-  die;
 
   $self->debug("load_modules() finished.");
 }
@@ -278,6 +279,8 @@ sub unregister {
   delete $self->{register_table}{$id};
   $self->debug("[".$self->id."] Dumping out register_table...");
   print Dumper($self->{register_table});
+  $self->{register_table}{$id} = undef;
+
   $self->debug("[".$self->id."] Dumping out register_table completed.");
 
   $self->debug("[".$self->id."] unregister() finished.");

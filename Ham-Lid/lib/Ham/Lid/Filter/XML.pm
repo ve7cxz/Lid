@@ -48,7 +48,6 @@ has 'message' => (is => 'rw');
 
 sub new {
   my ($class, $message) = @_;
-print Dumper(@_);
   my $g = Data::GUID->new;
   my $self = {
     'version' => $VERSION,
@@ -75,7 +74,6 @@ sub encode {
   my $msg = eval { return $x->XMLout($self->message); };
 
   if(!$@) {
-    print Dumper($msg);
     return $msg;
   } else {
     $self->error("Error parsing XML message!");
@@ -90,7 +88,6 @@ sub decode {
   my $msg = eval { return $x->XMLin($self->message); };
 
   if(!$@) {
-    print Dumper($msg);
     return $msg;
   } else {
     $self->error("Error parsing XML message!");

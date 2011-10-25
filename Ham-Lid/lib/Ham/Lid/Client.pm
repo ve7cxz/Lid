@@ -161,7 +161,7 @@ sub client_error {
   my ($self) = @_;
   $self->debug("[".$self->id."] client_error() called.");
   $self->debug("[".$self->id."] Unregistering from manager...");
-  $self->out($self->create_message("manager", "unregister"));
+  $self->out($self->create_message($self->manager->id, "unregister"));
   $self->debug("[".$self->id."] Unregister event sent.");
   $self->debug("[".$self->id."] client_error() finished.");
 }

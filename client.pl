@@ -4,11 +4,18 @@ use strict;
 use warnings;
 
 use XML::Simple;
+use Switch;
 use Data::Dumper;
 use POE qw(Component::Client::TCP Wheel::ReadLine);
 use Data::GUID;
+use Ham::Lid::Message;
+use Ham::Lid::Filter;
+
+my $manager;
+my $id;
 
 my $s;
+
 POE::Component::Client::TCP->new(
   RemoteAddress   => "localhost",
   RemotePort      => 4321,
@@ -26,8 +33,52 @@ my $c = POE::Session->create(
 POE::Kernel->run();
 
 sub server_input {
-  print @_;
+  my ($msg) = @_;
+  process($msg);
 }
+
+sub process {
+  my ($msg) = @_;
+  my $f = Ham::Lid::Filter->new("XML", $msg);
+  my $data = $f->decode;
+
+  if(!$@)
+  {
+    switch ($data->type) {
+      case "register_ok" {
+        print "\nRegistration successful.\n";
+        print "I am ".$data->destination.", manager is ".$data->source.".\n";
+        $manager = $data->source;
+        $id = $data->destination;
+      }
+      case "pong" {
+        print "Pong receieved.\n";
+      }
+    }
+  }
+}
+
+sub command {
+  my ($cmd) = @_;
+
+  my ($c) = $cmd =~ m/^(\w+)/;
+  print "COMMAND: $c\n";
+
+  my $o;
+  switch($c) {
+    case "ping" {
+      my $m = Ham::Lid::Message->new({source => $id, destination => $manager, type => "ping"});
+      $o = Ham::Lid::Filter->new("XML", $m);
+      print "Sent ping to manager...\n";
+    }
+  }
+  
+  if(defined($o))
+  {
+    $s->get_heap->{server}->put($o->encode);
+  }
+}
+
 
 sub handle_user_input {
   my ($input, $exception) = @_[ARG0, ARG1];
@@ -41,8 +92,8 @@ sub handle_user_input {
   }
 
   $console->put("  You entered: $input");
-  $s->get_heap->{server}->put($input);
   $console->addhistory($input);
+  command($input);
   $console->get("Go: ");
 }
 
