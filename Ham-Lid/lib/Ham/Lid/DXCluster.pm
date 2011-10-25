@@ -288,7 +288,7 @@ sub client_process {
     } elsif($line =~ m/^(\S+)>/) {
       $self->debug("[".$self->id."] Got DX cluster prompt: ".$1);
       $self->cluster_name($1);
-    } elsif($line =~ m/^DX de (\w+):\s+(\d+.\d+)\s+(\w+)\s+(.*)\s+(\d+Z)\s?(\w*)/) {
+    } elsif($line =~ m/^DX de (\w+):\s+(\d+.\d+)\s+(\S+)\s+(.*)\s+(\d+Z)\s?(\w*)/) {
       $self->debug("[".$self->id."] Got DX spot from $1 (in $6) of $3 on $2 at $5 (comment: $4).");
     } elsif($line =~ m/^To LOCAL de (\w+):\s(.*)/) {
       $self->debug("[".$self->id."] Got LOCAL ANNOUNCE from $1: $2.");
