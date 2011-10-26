@@ -1,59 +1,45 @@
-<config name="lid" version="0.01">
-  <modules>
-
-    <module type="Daemon">
-      <instances>
-        <instance name="daemon_4321">
-          <options address="0.0.0.0" port="4321" type="tcp" />
-        </instance>
-      </instances>
-    </module>
-
-    <module type="DXCluster">
-      <instances>
-        <instance name="dxcluster_gb7mbc" enabled="no">
-          <options hostname="gb7mbc.spoo.org" port="8000" callsign="M0VKG" />
-        </instance>
-        <instance name="dxcluster_localhost" enabled="yes">
-          <options hostname="localhost" port="7300" callsign="M0VKG" />
-          <subscriptions>
-            <subscription name="dx_1" event="dx_spot" filter="m0vkg_dx_filter" subscriber="storage" subscriber_handler="dx_spot_add" />
-            <subscription name="dx_2" event="dx_spot" filter="m0vkg_dx_filter" subscriber="storage" subscriber_handler="dx_spot_add_2" />
-          </subscriptions>
-        </instance>
-      </instances>
-    </module>
-  </modules>
-
-  <filters>
-    <filter name="m0vkg_dx_filter" type="DXCluster">
-      <boolean type="and">
-        <field name="callsign">
-          <boolean type="or">
-            <test type="equals">M0VKG</test>
-            <test type="equals">2E0VKG</test>
-          </boolean>
-        </field>
-        <field name="frequency">
-          <boolean type="or">
-            <test type="starts">7</test>
-          </boolean>
-        </field>
-      </boolean>
-    </filter>
-    <filter name="2e0meh_dx_filter" type="DXCluster">
-      <boolean type="and">
-        <field name="callsign">
-          <boolean type="or">
-            <test type="equals">M6AXC</test>
-            <test type="equals">2E0MEH</test>
-          </boolean>
-        </field>
-        <field name="frequency">
+<opt name="lid" version="0.01">
+  <filter name="2e0meh_dx_filter" type="DXCluster">
+    <boolean type="and">
+      <field name="callsign">
+        <boolean type="or">
+          <test type="equals">M6AXC</test>
+          <test type="equals">2E0MEH</test>
+        </boolean>
+      </field>
+      <field name="frequency">
+        <test type="starts">7</test>
+      </field>
+    </boolean>
+  </filter>
+  <filter name="m0vkg_dx_filter" type="DXCluster">
+    <boolean type="and">
+      <field name="callsign">
+        <boolean type="or">
+          <test type="equals">M0VKG</test>
+          <test type="equals">2E0VKG</test>
+        </boolean>
+      </field>
+      <field name="frequency">
+        <boolean type="or">
           <test type="starts">7</test>
-        </field>
-      </boolean>
-    </filter>
-  </filters>
-
-</config>
+        </boolean>
+      </field>
+    </boolean>
+  </filter>
+  <module name="DXCluster">
+    <instance name="dxcluster_gb7mbc" enabled="yes">
+      <options callsign="M0VKG" hostname="gb7mbc.spoo.org" port="8000" />
+    </instance>
+    <instance name="dxcluster_localhost" enabled="no">
+      <options callsign="M0VKG" hostname="localhost" port="7300" />
+    </instance>
+  </module>
+  <module name="Daemon">
+    <instance name="daemon_4321" enabled="no">
+      <options address="0.0.0.0" port="4321" type="tcp" />
+    </instance>
+  </module>
+  <subscription name="dx_1" event="dx_spot" filter="m0vkg_dx_filter" subscriber="storage" subscriber_handler="dx_spot_add" to="dxcluster_localhost" />
+  <subscription name="dx_2" event="dx_spot" filter="m0vkg_dx_filter" subscriber="storage" subscriber_handler="dx_spot_add_2" to="dxcluster_localhost" />
+</opt>

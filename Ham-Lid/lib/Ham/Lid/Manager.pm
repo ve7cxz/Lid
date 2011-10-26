@@ -53,6 +53,7 @@ has 'id' => (is => 'rw');
 has 'buffer' => (is => 'rw');
 has 'register_table' => (is => 'rw');
 has 'config' => (is => 'rw');
+has 'config_location' => (is => 'rw');
 
 sub new {
 
@@ -66,13 +67,14 @@ sub new {
   };
 
   bless $self, $class;
-  $self->debug("[".$self->id."] new() called.");
+  $self->debug("new() called.");
 
   # Create input buffer
-  $self->buffer(new Ham::Lid::Buffer);
-  $self->buffer->register_callback("out", "default", sub { $self->input($_[0]); } );
+#  $self->buffer(new Ham::Lid::Buffer);
+#  $self->buffer->register_callback("out", "default", sub { $self->input($_[0]); } );
 
   $self->load_config;
+  $self->save_config;
 
   $self->session(POE::Session->create(
     inline_states => {
@@ -83,12 +85,11 @@ sub new {
         $_[KERNEL]->yield("tick");
       },
       tick => sub {
-        $self->debug("tick triggered");
-        $self->debug("Kernel tick");
         $_[KERNEL]->delay(tick => 1);
       },
       in   => sub {
-        $self->buffer->in($_[ARG0]);
+ #       $self->buffer->in($_[ARG0]);
+        $self->input($_[ARG0]);
       },
     }
   ));
@@ -102,7 +103,7 @@ sub new {
   #new Ham::Lid::DXCluster($self, "dxcluster", "localhost", "7300", "M0VKG");
 
   $self->start();
-  $self->debug("[".$self->id."] new() finished.");
+  $self->debug("new() finished.");
   return $self;
 }
 
@@ -119,6 +120,7 @@ sub load_config {
     $self->debug("Attempting to load configuration file from ".$location."...");
     if(-f $location) {
       $self->debug("Found ".$location);
+      $self->config_location($location);
       $self->config($x->XMLin($location));
       if($@) {
         $self->error("Error loading ".$location."!");
@@ -139,35 +141,94 @@ sub load_config {
 
 }
 
-sub load_module {
-  my ($self, $module, $name, $options) = @_;
+sub save_config {
+  my ($self) = @_;
 
-  $self->debug("load_module() called.");
-  $self->debug("load_module(): Loading ".$name."...");
-  $self->debug("load_module(): Type is ".$module);
-  $self->debug("load_module(): Name is ".$name);
-  $self->debug("load_module(): Options are ".Dumper($options));
+  $self->debug("save_config() called.");
+  my $x = XML::Simple->new();#ForceArray => 1, KeyAttr => { filters => 'filter' });
 
-  $self->debug("load_module(): Attempting to load $name (Ham::Lid::$module)...");
-  my $m = 'Ham::Lid::'.$module;
-  $self->debug("load_module(): load $m...");
-  load $m;
+  my $xc = $x->XMLout($self->config);
 
-  if($@) {
-    $self->error("load_module(): Error loading $name!");
-  } else {
-    $self->debug("load_module(): Loaded $name.");
-    $self->debug("load_module(): Attempting to start $name (Ham::Lid::$module)...");
-    if($m->new($self, $name, @{$options}[0])) {
-      $self->debug("load_module(): Started $name.");
-      $self->debug("load_module() finished.");
-      return 1;
-    } else {
-      $self->error("load_module(): Error starting $name!");
-    }
+  open CONFIG, ">", "config_saved.xml";
+  print CONFIG $xc;
+  close CONFIG;
+}
+
+sub get_config_modules {
+  my ($self) = @_;
+
+  $self->debug("get_config_modules() called.");
+
+  my @modules;
+  while (my ($key, $value) = each (%{$self->config->{module}})) {
+    $self->debug("get_config_modules(): $key.");
+    push @modules, $key;
   }
 
-  $self->debug("load_module() finished.");
+  $self->debug("get_config_modules() finished.");
+
+  return @modules;
+}
+
+sub get_config_module_instances {
+  my ($self, $module) = @_;
+
+  $self->debug("get_config_module_instances() called.");
+
+  my @instances;
+  while ( my ($key, $value) = each (%{$self->config->{module}{$module}{instance}})) {
+    $self->debug("get_config_module_instances(): $key.");
+    push @instances, $key;
+  }
+
+  $self->debug("get_config_module_instances() finished.");
+
+  return @instances;
+}
+
+sub get_config_module_instance {
+  my ($self, $module, $name) = @_;
+
+  $self->debug("get_config_module_instance() called.");
+
+  $self->debug("get_config_module_instance() finished.");
+
+  return $self->config->{module}{$module}{instance}{$name};
+}
+
+sub load_instance {
+  my ($self, $module, $name, $config) = @_;
+
+  $self->debug("load_instance() called.");
+  $self->debug("load_instance(): Loading ".$name."...");
+  $self->debug("load_instance(): Type is ".$module);
+  $self->debug("load_instance(): Name is ".$name);
+  $self->debug("load_instance(): Is this instance enabled: ".$config->{enabled});
+
+  if($config->{enabled} eq "yes") {
+    $self->debug("load_instance(): Attempting to load $module (Ham::Lid::$module)...");
+    my $m = 'Ham::Lid::'.$module;
+    $self->debug("load_instance(): load $m...");
+    load $m;
+  
+    if($@) {
+      $self->error("load_instance(): Error loading $module!");
+    } else {
+      $self->debug("load_instance(): Loaded $module.");
+      $self->debug("load_instance(): Attempting to start $name (Ham::Lid::$module)...");
+      if($m->new($self, $name, $config->{options}[0])) {
+        $self->debug("load_instance(): Started $name.");
+        $self->debug("load_instance() finished.");
+        return 1;
+      } else {
+        $self->error("load_instance(): Error starting $name!");
+      }
+    }
+  } else {
+    $self->debug("load_instance(): Instance is not enabled.");
+  }
+
+  $self->debug("load_instance() finished.");
   return;
 }
 
@@ -181,28 +242,17 @@ sub load_modules {
 
   $self->debug("Loading modules...");
   # Look for module definitions
-  foreach my $module (@{$self->config->{modules}[0]{module}}) {
-    $self->debug("Found configuration for ".$module->{type}.".");
-
-    # Look for module-wide options
-
-
+  foreach my $module ($self->get_config_modules) {
+    $self->debug("Found configuration for ".$module.".");
     # Look for module instance definitions
-    while ( my ($key, $value) = each (%{$module->{instances}[0]{instance}})) {
-      $self->debug("Found instance with name '".$key."'...");
+    foreach my $instance ($self->get_config_module_instances($module)) {
+      $self->debug("Found instance with name '".$instance."'...");
+      # Look for module instance configuration
+      my $config = $self->get_config_module_instance($module, $instance);
+      $self->load_instance($module, $instance, $config);
     }
   }
-#  if(!defined($self->config->{modules})) {
-#    $self->error("No modules defined in configuration!");
-#    croak "No modules defined in configuration!";
-#  }
-#
-#  foreach my $module (keys %{$self->config->{modules}[0]{module}}) {
-#    my $type = $self->config->{modules}[0]{module}{$module}{type};
-#    my $options = $self->config->{modules}[0]{module}{$module}{options};
-#    $self->debug("Calling load_module() for ".$module."...");
-#    $self->load_module($type, $module, $options);
-#  }
+#  $poe_kernel->post($poe_kernel->alias_resolve('dxcluster_gb7mbc'), 'shutdown');
 
   $self->debug("load_modules() finished.");
 }
@@ -210,41 +260,41 @@ sub load_modules {
 sub start {
 
   my ($self) = @_;
-  $self->debug("[".$self->id."] start() called.");
+  $self->debug("start() called.");
 
-  $self->debug("[".$self->id."] Calling POE::Kernel->run()...");
+  $self->debug("Calling POE::Kernel->run()...");
   $self->notice("Ready.");
   POE::Kernel->run();
 
-  $self->debug("[".$self->id."] start() finished.");
+  $self->debug("start() finished.");
 }
 
 sub input {
   my ($self, $data) = @_;
-  $self->debug("[".$self->id."] input() called.");
+  $self->debug("input() called.");
   if(ref $data ne "Ham::Lid::Message")
   {
     $self->error("Message is not of type Ham::Lid::Message!");
     return 0;
   }
 
-  $self->debug("[".$self->id."] I am ".$self->id.", message is for ".$data->destination);
+  $self->debug("I am ".$self->id.", message is for ".$data->destination);
 
   if($data->destination eq $self->id) {
-    $self->debug("[".$self->id."] Message is for me.");
+    $self->debug("Message is for me.");
     $self->process($data);
   } else {
-    $self->debug("[".$self->id."] Message is not for me.");
+    $self->debug("Message is not for me.");
     $self->out($data);
   }
-  $self->debug("[".$self->id."] input() finished.");
+  $self->debug("input() finished.");
 }
 
 sub process {
 
   my ($self, $data) = @_;
 
-  $self->debug("[".$self->id."] process() called.");
+  $self->debug("process() called.");
   $self->debug("'".$data->type."' message received from ".$data->source.".");
   switch ($data->type) {
     case "ping" {
@@ -264,7 +314,7 @@ sub process {
     }
   }
 
-  $self->debug("[".$self->id."] process() finished.");
+  $self->debug("process() finished.");
 }
 
 sub list {
@@ -284,52 +334,36 @@ sub list {
   $self->debug("list() finished.");
 }
 
-sub spawn {
-
-  my ($self, $msg) = @_;
-
-  $self->debug("spawn() called.");
-
-  if($msg->message)
-  {
-    if($msg->message->{command}) {
-      $self->debug("Request to spawn ".$msg->message->{command});
-    }
-  }
-
-  $self->debug("spawn() finished.");
-}
-
 sub register {
 
   my ($self, $id, $name, $type, $manager, $state, $buffer) = @_;
 
-  $self->debug("[".$self->id."] register() called.");
-  $self->debug("[".$self->id."] registration from $id ($type) with name = $name, manager = $manager.");
+  $self->debug("register() called.");
+  $self->debug("registration from $id ($type) with name = $name, manager = $manager.");
 
   $self->{register_table}{$id} = {'id' => $id, 'name' => $name, 'type' => $type, 'manager' => $manager, 'state' => $state, 'buffer' => $buffer};
   $self->out($self->create_message($id, "register_ok"));
 
-  $self->debug("[".$self->id."] Dumping out register_table...");
-  print Dumper($self->{register_table});
-  $self->debug("[".$self->id."] Dumping out register_table completed.");
-  $self->debug("[".$self->id."] register() finished.");
+  #$self->debug("Dumping out register_table...");
+  #print Dumper($self->{register_table});
+  #$self->debug("Dumping out register_table completed.");
+  $self->debug("register() finished.");
 }
 
 sub unregister {
 
   my ($self, $id) = @_;
 
-  $self->debug("[".$self->id."] unregister() called.");
+  $self->debug("unregister() called.");
 
   delete $self->{register_table}{$id};
-  $self->debug("[".$self->id."] Dumping out register_table...");
+  $self->debug("Dumping out register_table...");
   print Dumper($self->{register_table});
   $self->{register_table}{$id} = undef;
 
-  $self->debug("[".$self->id."] Dumping out register_table completed.");
+  $self->debug("Dumping out register_table completed.");
 
-  $self->debug("[".$self->id."] unregister() finished.");
+  $self->debug("unregister() finished.");
 }
 
 sub create_message {
@@ -348,13 +382,13 @@ sub out {
   $self->debug("DEST  : ".$msg->destination);
   $self->debug("TYPE  : ".$msg->type);
 
-  $self->debug("[".$self->id."] out() called.");
-  $self->debug("[".$self->id."] Sending message to ".$msg->destination." of type ".$msg->type.".");
+  $self->debug("out() called.");
+  $self->debug("Sending message to ".$msg->destination." of type ".$msg->type.".");
   # We're the manager, so we have to find the relevant buffer
   my $name = $self->{register_table}{$msg->destination}{name};
   $self->debug("Name is $name");
   $poe_kernel->post($poe_kernel->alias_resolve($name), 'in', $msg);
-  $self->debug("[".$self->id."] out() finished.");
+  $self->debug("out() finished.");
 }
 
 

@@ -65,14 +65,14 @@ has 'filters' => (is => 'rw');
 
 sub new {
 
-  my ($class, $manager, $name, $options) = @_;
+  my ($class, $manager, $name, $config) = @_;
 
   my $g = Data::GUID->new;
   my $self = {
     'version' => $VERSION,
     'id' => $g->as_string,
     'subscribers' => [],
-    'options' => $options,
+    'options' => $config,
   };
 
   bless $self, $class;
@@ -93,27 +93,27 @@ sub new {
     $self->debug("Name passed (".$self->name.")");
   }
 
-  if(!defined($options->{hostname})) {
+  if(!defined($config->{hostname})) {
     $self->error("No hostname passed to session.");
     croak "No hostname passed to session.";
   } else {
-    $self->hostname($options->{hostname});
+    $self->hostname($config->{hostname});
     $self->debug("Hostname passed (".$self->hostname.")");
   }
 
-  if(!defined($options->{port})) {
+  if(!defined($config->{port})) {
     $self->error("No port passed to session.");
     croak "No port passed to session.";
   } else {
-    $self->port($options->{port});
+    $self->port($config->{port});
     $self->debug("Port passed (".$self->port.")");
   }
 
-  if(!defined($options->{callsign})) {
+  if(!defined($config->{callsign})) {
     $self->error("No callsign passed to session.");
     croak "No callsign passed to session.";
   } else {
-    $self->callsign($options->{callsign});
+    $self->callsign($config->{callsign});
     $self->debug("Callsign passed (".$self->callsign.")");
   }
 
@@ -122,10 +122,10 @@ sub new {
 
   # Check for any filters in the options
   if($self->options->{filters}) {
-    $self->debug("[".$self->id."] Loading filters...");
+    $self->debug("[".$self->name."] Loading filters...");
     my $filters = $self->options->{filters}[0]{filter};
     while( my($key, $value) = each(%$filters) ) {
-      $self->debug("[".$self->id."] Loading '".$key."' filter...");
+      $self->debug("[".$self->name."] Loading '".$key."' filter...");
       my $filter = Ham::Lid::DXCluster::Filter->new($filters->{$key});
       $self->{filters}{$key} = $filter;
     }
@@ -133,25 +133,18 @@ sub new {
 
   # Check for any subscribers in the options
   if($self->options->{subscriptions}) {
-    $self->debug("[".$self->id."] Loading subscriptions...");
+    $self->debug("[".$self->name."] Loading subscriptions...");
     my $subscriptions = $self->options->{subscriptions}[0]{subscription};
     while( my($key, $value) = each(%$subscriptions) ) {
-      $self->debug("[".$self->id."] Loading '".$key."' subscription...");
-      $self->debug("[".$self->id."] Module ".$value->{subscriber}." wants to subscribe to ".$value->{event}." events, filtered through ".$value->{filter}." and sending to ".$value->{subscriber_handler}.".");
+      $self->debug("[".$self->name."] Loading '".$key."' subscription...");
+      $self->debug("[".$self->name."] Module ".$value->{subscriber}." wants to subscribe to ".$value->{event}." events, filtered through ".$value->{filter}." and sending to ".$value->{subscriber_handler}.".");
 #      my $filter = Ham::Lid::DXCluster::Filter->new($filters->{$key});
 #      $self->{filters}{$key} = $filter;
     }
   }
-  die;
   $self->init();
 
   return $self;
-}
-
-sub msg {
-  my ($self, $msg) = @_;
-
-  $self->debug("msg() called.");
 }
 
 sub init {
@@ -162,13 +155,13 @@ sub init {
   # Create buffers to hold data
   $self->buffer(Ham::Lid::Buffer->new);
   $self->client_buffer(Ham::Lid::Buffer->new);
-  $self->buffer->register_callback("out", "default", sub { $self->input($_[0]); });
+#  $self->buffer->register_callback("out", "default", sub { $self->input($_[0]); });
   $self->client_buffer->register_callback("out", "default", sub { $self->client_input($_[0]); });
 
   $self->session(POE::Session->create(
     inline_states => {
       _start      => sub {
-        $self->debug("[".$self->id."] Starting client...");
+        $self->debug("[".$self->name."] Starting client...");
 
         $_[KERNEL]->alias_set($self->name);
 
@@ -180,16 +173,16 @@ sub init {
           #RemotePort        => 8000,
           RemoteAddress     => $self->hostname,
           RemotePort        => $self->port,,
-          #Started           => sub { $self->debug("[".$self->id."] Started connection to ".$self->hostname.", port ".$self->port."."); },
+          #Started           => sub { $self->debug("[".$self->name."] Started connection to ".$self->hostname.", port ".$self->port."."); },
           SuccessEvent      => "on_connect",
           FailureEvent      => "on_failure",
         );
 
-        $self->debug("[".$self->id."] Client started.");        
+        $self->debug("[".$self->name."] Client started.");        
         $_[KERNEL]->yield("next");
       },
       on_connect  => sub {
-        $self->debug("[".$self->id."] Connected.");
+        $self->debug("[".$self->name."] Connected.");
         my $client_socket = $_[ARG0];
 
         my $wheel = POE::Wheel::ReadWrite->new(
@@ -202,40 +195,40 @@ sub init {
         $_[HEAP]{client} = $wheel;
       },
       on_input    => sub {
-        $self->debug("[".$self->id."] on_input event called.");
+        $self->debug("[".$self->name."] on_input event called.");
         $self->client_input($_[ARG0]);
       },
       on_failure  => sub {
-        $self->debug("[".$self->id."] on_failure event called.");
-        $self->debug("[".$self->id."] Could not connect to ".$self->hostname.", port ".$self->port.".");
+        $self->debug("[".$self->name."] on_failure event called.");
+        $self->debug("[".$self->name."] Could not connect to ".$self->hostname.", port ".$self->port.".");
         $self->out($self->create_message($self->manager->id, "unregister"));
         $_[KERNEL]->post($self->session, 'shutdown');
         $_[KERNEL]->yield('shutdown');
       },
       on_error    => sub {
-        $self->debug("[".$self->id."] on_error event called.");
-        $self->debug("[".$self->id."] Error in connection to ".$self->hostname.", port ".$self->port.".");
+        $self->debug("[".$self->name."] on_error event called.");
+        $self->debug("[".$self->name."] Error in connection to ".$self->hostname.", port ".$self->port.".");
         $self->out($self->create_message($self->manager->id, "unregister"));
         $_[KERNEL]->post($self->session, 'shutdown');
         $_[KERNEL]->yield('shutdown');
       },
       next    => sub {
-        $self->debug("Tick.");
-        $self->emit("tick");
         $_[KERNEL]->delay(next => 1);
       },
       in   => sub {
-        $self->buffer->in($_[ARG0]);
+        $self->input($_[ARG0]);
       },
       shutdown => sub {
-        $self->debug("[".$self->id."] Session shutdown called.");
+        $self->debug("[".$self->name."] Session shutdown called.");
         my ($kernel, $session, $heap) = @_[KERNEL, SESSION, HEAP];
         delete $heap->{wheel};
+        delete $heap->{client};
+        delete $heap->{server};
         $kernel->alias_remove($heap->{alias});
         $kernel->delay(next => undef);
       },
       _stop   => sub {
-        $self->debug("[".$self->id."] Session stopped.");
+        $self->debug("[".$self->name."] Session stopped.");
       },
     }
   ));
@@ -245,75 +238,74 @@ sub init {
 
 sub input {
   my ($self, $data) = @_;
-  $self->debug("[".$self->id."] input() called.");
+  $self->debug("[".$self->name."] input() called.");
   if(ref $data ne "Ham::Lid::Message")
   {
     $self->error("Message is not of type Ham::Lid::Message!");
     return 0;
   }
 
-  $self->debug("[".$self->id."] I am ".$self->id.", message is for ".$data->destination);
+  $self->debug("[".$self->name."] I am ".$self->id.", message is for ".$data->destination);
 
   if($data->destination eq $self->id) {
-    $self->debug("[".$self->id."] Message is for me.");
+    $self->debug("[".$self->name."] Message is for me.");
     $self->process($data);
   } else {
-    $self->debug("[".$self->id."] Message is not for me.");
+    $self->debug("[".$self->name."] Message is not for me.");
     $self->out($data);
   }
-  $self->debug("[".$self->id."] input() finished.");
+  $self->debug("[".$self->name."] input() finished.");
 }
 
 sub client_input {
   my ($self, $data) = @_;
-  $self->debug("[".$self->id."] client_input() called.");
+  $self->debug("[".$self->name."] client_input() called.");
 
   $self->client_process($data);
 
-  $self->debug("[".$self->id."] client_input() finished.");
+  $self->debug("[".$self->name."] client_input() finished.");
 }
 
 sub process {
 
   my ($self, $data) = @_;
 
-  $self->debug("[".$self->id."] process() called.");
+  $self->debug("[".$self->name."] process() called.");
   $self->debug("Command is of type '".$data->type."', and is from '".$data->source."'.");
   switch ($data->type) {
     case "ping" {
-      $self->debug("[".$self->id."] 'ping' message received from ".$data->source.".");
+      $self->debug("[".$self->name."] 'ping' message received from ".$data->source.".");
       $self->out($self->create_message($data->source, "pong"));
     }
     case "register_ok" {
       $self->debug("Registration successful");
       $self->registered(1);
-      $self->start_client();
     }
     case "subscribe" {
       $self->subscribe($data->source);
     }
   }
 
-  $self->debug("[".$self->id."] process() finished.");
+  $self->debug("[".$self->name."] process() finished.");
 }
 
 sub client_process {
 
   my ($self, $data) = @_;
 
-  $self->debug("[".$self->id."] client_process() called.");
+  $self->debug("[".$self->name."] client_process() called.");
 
   my @lines = split(/\n/, $data);
 
   foreach my $line (@lines) {
     if($line =~ m/^login: /) {
-      $self->debug("[".$self->id."] Got DX cluster login prompt. Sending callsign (".$self->callsign.")...");
+      $self->debug("[".$self->name."] Got DX cluster login prompt. Sending callsign (".$self->callsign.")...");
       $self->client_out($self->callsign."\n");
     } elsif($line =~ m/^(\S+)>/) {
-      $self->debug("[".$self->id."] Got DX cluster prompt: ".$1);
+      $self->debug("[".$self->name."] Got DX cluster prompt: ".$1);
       $self->cluster_name($1);
     } elsif($line =~ m/^DX de (\w+):\s+(\d+.\d+)\s+(\S+)\s+(.*)\s+(\d+Z)\s?(\w*)/) {
-      $self->debug("[".$self->id."] Got DX spot from $1 (in $6) of $3 on $2 at $5 (comment: $4).");
+      $self->debug("[".$self->name."] Got DX spot from $1 (in $6) of $3 on $2 at $5 (comment: $4).");
       my $dxspot = {
         'spotter'   => $1,
         'callsign'  => $3,
@@ -324,15 +316,15 @@ sub client_process {
       if($6) {
         $dxspot->{'locator'} = $6;
       }
-      $self->filters->{'m0vkg_dx_filter'}->process($dxspot);
+      #$self->filters->{'m0vkg_dx_filter'}->process($dxspot);
     } elsif($line =~ m/^To LOCAL de (\w+):\s(.*)/) {
-      $self->debug("[".$self->id."] Got LOCAL ANNOUNCE from $1: $2.");
+      $self->debug("[".$self->name."] Got LOCAL ANNOUNCE from $1: $2.");
     }
   }
 
   $self->client_buffer(undef);
 
-  $self->debug("[".$self->id."] client_process() finished.");
+  $self->debug("[".$self->name."] client_process() finished.");
 }
 
 sub subscribe {
@@ -378,23 +370,22 @@ sub out {
   $self->debug("DEST  : ".$msg->destination);
   $self->debug("TYPE  : ".$msg->type);
 
-  $self->debug("[".$self->id."] out() called.");
-  $self->debug("[".$self->id."] Sending message to ".$msg->destination." of type ".$msg->type.".");
-  $self->manager->buffer->in($msg);
+  $self->debug("[".$self->name."] out() called.");
+  $self->debug("[".$self->name."] Sending message to ".$msg->destination." of type ".$msg->type.".");
   $poe_kernel->post($poe_kernel->alias_resolve('manager'), 'in', $msg);
-  $self->debug("[".$self->id."] out() finished.");
+  $self->debug("[".$self->name."] out() finished.");
 }
 
 sub client_out {
   my ($self, $msg) = @_;
 
-  $self->debug("[".$self->id."] client_out() called.");
+  $self->debug("[".$self->name."] client_out() called.");
 
-  $self->debug("[".$self->id."] Sending data...");
+  $self->debug("[".$self->name."] Sending data...");
 
   $self->session->get_heap->{client}->put($msg);
 
-  $self->debug("[".$self->id."] client_out() finished.");
+  $self->debug("[".$self->name."] client_out() finished.");
 }
 
 1;
