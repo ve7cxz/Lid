@@ -1,60 +1,59 @@
 <config name="lid" version="0.01">
   <modules>
-    <module name="daemon_4321" type="Daemon">
-      <options address="0.0.0.0" port="4321" type="tcp">
-        <authentication use="auth_mysql" />
-      </options>
+
+    <module type="Daemon">
+      <instances>
+        <instance name="daemon_4321">
+          <options address="0.0.0.0" port="4321" type="tcp" />
+        </instance>
+      </instances>
     </module>
-    <module name="dxcluster_gb7mbc" type="DXCluster">
-      <options hostname="gb7mbc.spoo.org" port="8000" callsign="M0VKG" />
+
+    <module type="DXCluster">
+      <instances>
+        <instance name="dxcluster_gb7mbc" enabled="no">
+          <options hostname="gb7mbc.spoo.org" port="8000" callsign="M0VKG" />
+        </instance>
+        <instance name="dxcluster_localhost" enabled="yes">
+          <options hostname="localhost" port="7300" callsign="M0VKG" />
+          <subscriptions>
+            <subscription name="dx_1" event="dx_spot" filter="m0vkg_dx_filter" subscriber="storage" subscriber_handler="dx_spot_add" />
+            <subscription name="dx_2" event="dx_spot" filter="m0vkg_dx_filter" subscriber="storage" subscriber_handler="dx_spot_add_2" />
+          </subscriptions>
+        </instance>
+      </instances>
     </module>
-    <module name="dxcluster" type="DXCluster">
-      <options hostname="localhost" port="7300" callsign="M0VKG" />
-      <filter name="m0vkg_dx_filter">
-        <and>
-          <field name="callsign">
-            <or>
-              <equals>M0VKG</equals>
-              <equals>2E0VKG</equals>
-            </or>
-          </field>
-          <field name="frequency">
-            <starts>7</starts>
-          </field>
-        </and>
-      </filter>
-    </module>
-    <!--
-    <module name="auth_mysql" type="Auth">
-      <options type="mysql" hostname="localhost" port="3306" username="dbuser" password="dbpass" database="lid" table="auth" />
-    </module>
-    <module name="storage_mysql" type="Storage">
-      <options type="mysql" hostname="localhost" port="3306" username="dbuser" password="dbpass" database="lid" />
-      <subscriptions>
-        <subscription to="dxcluster" event="dx_spot" filter="m0vkg_dx_filter" subscriber="storage_dx_spot_add" />
-      </subscriptions>
-      <methods>
-        <method name="storage_dx_spot_add" type="query">
-          <query name="dx_add"/>
-        </method>
-      </methods>
-    </module>
-    -->
   </modules>
-  <queries>
-    <query name="dx_add">
-      <inputs>
-        <input field="callsign" type="text" />
-        <input field="spotter" type="text" />
-        <input field="frequency" type="text" />
-        <input field="timestamp" type="text" />
-        <input field="comment" type="text" />
-        <input field="locator" type="text" optional="true" />
-      </inputs>
-      <outputs>
-        <output field="id" type="int" />
-      </outputs>
-      <query method="insert" inputs="callsign,spotter,frequency,timestamp,comment,locator" outputs="id" />
-    </query>
-  </queries>
+
+  <filters>
+    <filter name="m0vkg_dx_filter" type="DXCluster">
+      <boolean type="and">
+        <field name="callsign">
+          <boolean type="or">
+            <test type="equals">M0VKG</test>
+            <test type="equals">2E0VKG</test>
+          </boolean>
+        </field>
+        <field name="frequency">
+          <boolean type="or">
+            <test type="starts">7</test>
+          </boolean>
+        </field>
+      </boolean>
+    </filter>
+    <filter name="2e0meh_dx_filter" type="DXCluster">
+      <boolean type="and">
+        <field name="callsign">
+          <boolean type="or">
+            <test type="equals">M6AXC</test>
+            <test type="equals">2E0MEH</test>
+          </boolean>
+        </field>
+        <field name="frequency">
+          <test type="starts">7</test>
+        </field>
+      </boolean>
+    </filter>
+  </filters>
+
 </config>

@@ -14,6 +14,7 @@ use Data::GUID;
 use Ham::Lid::Debug;
 use Ham::Lid::Buffer;
 use Ham::Lid::Callback;
+use Ham::Lid::DXCluster::Filter;
 use Carp;
 use base qw(Ham::Lid::Debug Ham::Lid::Callback);
 our @ISA = qw(Exporter);
@@ -59,6 +60,8 @@ has 'hostname' => (is => 'rw');
 has 'port' => (is => 'rw');
 has 'cluster_name' => (is => 'rw');
 has 'client_buffer' => (is => 'rw');
+has 'options' => (is => 'rw');
+has 'filters' => (is => 'rw');
 
 sub new {
 
@@ -69,6 +72,7 @@ sub new {
     'version' => $VERSION,
     'id' => $g->as_string,
     'subscribers' => [],
+    'options' => $options,
   };
 
   bless $self, $class;
@@ -115,6 +119,30 @@ sub new {
 
   $self->debug("new() called.");
   $self->debug("ID is ".$self->id);
+
+  # Check for any filters in the options
+  if($self->options->{filters}) {
+    $self->debug("[".$self->id."] Loading filters...");
+    my $filters = $self->options->{filters}[0]{filter};
+    while( my($key, $value) = each(%$filters) ) {
+      $self->debug("[".$self->id."] Loading '".$key."' filter...");
+      my $filter = Ham::Lid::DXCluster::Filter->new($filters->{$key});
+      $self->{filters}{$key} = $filter;
+    }
+  }
+
+  # Check for any subscribers in the options
+  if($self->options->{subscriptions}) {
+    $self->debug("[".$self->id."] Loading subscriptions...");
+    my $subscriptions = $self->options->{subscriptions}[0]{subscription};
+    while( my($key, $value) = each(%$subscriptions) ) {
+      $self->debug("[".$self->id."] Loading '".$key."' subscription...");
+      $self->debug("[".$self->id."] Module ".$value->{subscriber}." wants to subscribe to ".$value->{event}." events, filtered through ".$value->{filter}." and sending to ".$value->{subscriber_handler}.".");
+#      my $filter = Ham::Lid::DXCluster::Filter->new($filters->{$key});
+#      $self->{filters}{$key} = $filter;
+    }
+  }
+  die;
   $self->init();
 
   return $self;
@@ -124,8 +152,6 @@ sub msg {
   my ($self, $msg) = @_;
 
   $self->debug("msg() called.");
-
-  $self->debug("msg is ".Dumper($msg));
 }
 
 sub init {
@@ -277,8 +303,6 @@ sub client_process {
 
   $self->debug("[".$self->id."] client_process() called.");
 
-  print Dumper($data);
-
   my @lines = split(/\n/, $data);
 
   foreach my $line (@lines) {
@@ -290,6 +314,17 @@ sub client_process {
       $self->cluster_name($1);
     } elsif($line =~ m/^DX de (\w+):\s+(\d+.\d+)\s+(\S+)\s+(.*)\s+(\d+Z)\s?(\w*)/) {
       $self->debug("[".$self->id."] Got DX spot from $1 (in $6) of $3 on $2 at $5 (comment: $4).");
+      my $dxspot = {
+        'spotter'   => $1,
+        'callsign'  => $3,
+        'frequency' => $2,
+        'timestamp' => $5,
+        'comment'   => $4,
+      };
+      if($6) {
+        $dxspot->{'locator'} = $6;
+      }
+      $self->filters->{'m0vkg_dx_filter'}->process($dxspot);
     } elsif($line =~ m/^To LOCAL de (\w+):\s(.*)/) {
       $self->debug("[".$self->id."] Got LOCAL ANNOUNCE from $1: $2.");
     }

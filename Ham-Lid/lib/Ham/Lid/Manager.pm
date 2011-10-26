@@ -72,11 +72,14 @@ sub new {
   $self->buffer(new Ham::Lid::Buffer);
   $self->buffer->register_callback("out", "default", sub { $self->input($_[0]); } );
 
+  $self->load_config;
+
   $self->session(POE::Session->create(
     inline_states => {
       _start => sub {
         $self->debug("_start triggered");
         $_[KERNEL]->alias_set("manager");
+        $self->load_modules;
         $_[KERNEL]->yield("tick");
       },
       tick => sub {
@@ -89,9 +92,6 @@ sub new {
       },
     }
   ));
-
-  $self->load_config;
-  $self->load_modules;
 
   # Start console
   #my $console = new Ham::Lid::Console($self);
@@ -114,6 +114,7 @@ sub load_config {
 
   my $l = ['/etc/lid/config.xml', '~/.lid/config.xml', './config.xml'];
 
+  my $loaded = 0;
   foreach my $location (@{$l}) {
     $self->debug("Attempting to load configuration file from ".$location."...");
     if(-f $location) {
@@ -124,13 +125,17 @@ sub load_config {
       } else {
         $self->debug("Successfully loaded config from ".$location.".");
         $self->debug("load_config() finished.");
-        return;
+        $loaded = 1;
       }
     }
   }
 
-  $self->error("Couldn't find a working configuration file!");
-  croak "Couldn't find a working configuration file!\n";
+  if($loaded) {
+    return 1;
+  } else {
+    $self->error("Couldn't find a working configuration file!");
+    croak "Couldn't find a working configuration file!\n";
+  }
 
 }
 
@@ -166,21 +171,38 @@ sub load_module {
   return;
 }
 
+sub load_filters {
+}
+
 sub load_modules {
   my ($self) = @_;
 
   $self->debug("load_modules() called.");
-  if(!defined($self->config->{modules})) {
-    $self->error("No modules defined in configuration!");
-    croak "No modules defined in configuration!";
-  }
 
-  foreach my $module (keys %{$self->config->{modules}[0]{module}}) {
-    my $type = $self->config->{modules}[0]{module}{$module}{type};
-    my $options = $self->config->{modules}[0]{module}{$module}{options};
-    $self->debug("Calling load_module() for ".$module."...");
-    $self->load_module($type, $module, $options);
+  $self->debug("Loading modules...");
+  # Look for module definitions
+  foreach my $module (@{$self->config->{modules}[0]{module}}) {
+    $self->debug("Found configuration for ".$module->{type}.".");
+
+    # Look for module-wide options
+
+
+    # Look for module instance definitions
+    while ( my ($key, $value) = each (%{$module->{instances}[0]{instance}})) {
+      $self->debug("Found instance with name '".$key."'...");
+    }
   }
+#  if(!defined($self->config->{modules})) {
+#    $self->error("No modules defined in configuration!");
+#    croak "No modules defined in configuration!";
+#  }
+#
+#  foreach my $module (keys %{$self->config->{modules}[0]{module}}) {
+#    my $type = $self->config->{modules}[0]{module}{$module}{type};
+#    my $options = $self->config->{modules}[0]{module}{$module}{options};
+#    $self->debug("Calling load_module() for ".$module."...");
+#    $self->load_module($type, $module, $options);
+#  }
 
   $self->debug("load_modules() finished.");
 }
