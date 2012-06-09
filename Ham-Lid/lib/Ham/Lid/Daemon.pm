@@ -101,7 +101,7 @@ sub new {
         $self->debug("_start triggered");
         $_[KERNEL]->alias_set($self->name);
         $self->debug("Registering with manager...");
-        $self->out($self->create_message($manager->id, "register", {'name' => $self->name, 'type' => ref $self, 'manager' => $self->manager->id}));
+        $self->out($self->create_message('manager', "register", {'name' => $self->name, 'type' => ref $self, 'manager' => 'manager'}));
 
         $_[HEAP]{server} = POE::Wheel::SocketFactory->new(
           BindAddress   => $options->{address},
@@ -149,7 +149,7 @@ sub in {
   my ($self, $data) = @_;
 
   $self->debug("in() called.");
-  if($data->destination eq $self->id) {
+  if($data->destination eq $self->name) {
     $self->debug("Message is for me.");
     $self->process($data);
   } else {

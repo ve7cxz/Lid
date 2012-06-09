@@ -62,17 +62,19 @@ has 'cluster_name' => (is => 'rw');
 has 'client_buffer' => (is => 'rw');
 has 'options' => (is => 'rw');
 has 'filters' => (is => 'rw');
+has 'global_config' => (is => 'rw');
 
 sub new {
 
-  my ($class, $manager, $name, $config) = @_;
+  my ($class, $manager, $name, $config, $global_config) = @_;
 
   my $g = Data::GUID->new;
   my $self = {
     'version' => $VERSION,
     'id' => $g->as_string,
     'subscribers' => [],
-    'options' => $config,
+    'options' => $config->{options}[0],
+    'global_config' => $global_config,
   };
 
   bless $self, $class;
@@ -93,27 +95,27 @@ sub new {
     $self->debug("Name passed (".$self->name.")");
   }
 
-  if(!defined($config->{hostname})) {
+  if(!defined($self->options->{hostname})) {
     $self->error("No hostname passed to session.");
     croak "No hostname passed to session.";
   } else {
-    $self->hostname($config->{hostname});
+    $self->hostname($self->options->{hostname});
     $self->debug("Hostname passed (".$self->hostname.")");
   }
 
-  if(!defined($config->{port})) {
+  if(!defined($self->options->{port})) {
     $self->error("No port passed to session.");
     croak "No port passed to session.";
   } else {
-    $self->port($config->{port});
+    $self->port($self->options->{port});
     $self->debug("Port passed (".$self->port.")");
   }
 
-  if(!defined($config->{callsign})) {
+  if(!defined($self->options->{callsign})) {
     $self->error("No callsign passed to session.");
     croak "No callsign passed to session.";
   } else {
-    $self->callsign($config->{callsign});
+    $self->callsign($self->options->{callsign});
     $self->debug("Callsign passed (".$self->callsign.")");
   }
 
@@ -121,9 +123,9 @@ sub new {
   $self->debug("ID is ".$self->id);
 
   # Check for any filters in the options
-  if($self->options->{filters}) {
+  if($self->global_config->{filter}) {
     $self->debug("[".$self->name."] Loading filters...");
-    my $filters = $self->options->{filters}[0]{filter};
+    my $filters = $self->global_config->{filter};
     while( my($key, $value) = each(%$filters) ) {
       $self->debug("[".$self->name."] Loading '".$key."' filter...");
       my $filter = Ham::Lid::DXCluster::Filter->new($filters->{$key});
@@ -132,9 +134,9 @@ sub new {
   }
 
   # Check for any subscribers in the options
-  if($self->options->{subscriptions}) {
+  if($self->options->{subscription}) {
     $self->debug("[".$self->name."] Loading subscriptions...");
-    my $subscriptions = $self->options->{subscriptions}[0]{subscription};
+    my $subscriptions = $self->options->{subscription};
     while( my($key, $value) = each(%$subscriptions) ) {
       $self->debug("[".$self->name."] Loading '".$key."' subscription...");
       $self->debug("[".$self->name."] Module ".$value->{subscriber}." wants to subscribe to ".$value->{event}." events, filtered through ".$value->{filter}." and sending to ".$value->{subscriber_handler}.".");
@@ -166,7 +168,7 @@ sub init {
         $_[KERNEL]->alias_set($self->name);
 
         $self->debug("Registering with manager...");
-        $self->out($self->create_message($self->manager->id, "register", {'name' => $self->name, 'type' => ref $self, 'manager' => $self->manager->id}));
+        $self->out($self->create_message('manager', "register", {'name' => $self->name, 'type' => ref $self, 'manager' => 'manager'}));
 
         $_[HEAP]{server} = POE::Wheel::SocketFactory->new(
           #RemoteAddress     => "gb7mbc.spoo.org",
@@ -201,14 +203,14 @@ sub init {
       on_failure  => sub {
         $self->debug("[".$self->name."] on_failure event called.");
         $self->debug("[".$self->name."] Could not connect to ".$self->hostname.", port ".$self->port.".");
-        $self->out($self->create_message($self->manager->id, "unregister"));
+        $self->out($self->create_message('manager', "unregister"));
         $_[KERNEL]->post($self->session, 'shutdown');
         $_[KERNEL]->yield('shutdown');
       },
       on_error    => sub {
         $self->debug("[".$self->name."] on_error event called.");
         $self->debug("[".$self->name."] Error in connection to ".$self->hostname.", port ".$self->port.".");
-        $self->out($self->create_message($self->manager->id, "unregister"));
+        $self->out($self->create_message('manager', "unregister"));
         $_[KERNEL]->post($self->session, 'shutdown');
         $_[KERNEL]->yield('shutdown');
       },
@@ -245,9 +247,9 @@ sub input {
     return 0;
   }
 
-  $self->debug("[".$self->name."] I am ".$self->id.", message is for ".$data->destination);
+  $self->debug("[".$self->name."] I am ".$self->name.", message is for ".$data->destination);
 
-  if($data->destination eq $self->id) {
+  if($data->destination eq $self->name) {
     $self->debug("[".$self->name."] Message is for me.");
     $self->process($data);
   } else {

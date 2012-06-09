@@ -50,6 +50,7 @@ BEGIN {
 has 'session' => (is => 'rw');
 has 'sessions' => (is => 'rw');
 has 'id' => (is => 'rw');
+has 'name' => (is => 'rw');
 has 'buffer' => (is => 'rw');
 has 'register_table' => (is => 'rw');
 has 'config' => (is => 'rw');
@@ -63,7 +64,8 @@ sub new {
     'version' => $VERSION,
     'id' => $g->as_string,
     'sessions' => {},
-    'register_table' => {}
+    'register_table' => {},
+    'name' => 'manager',
   };
 
   bless $self, $class;
@@ -196,8 +198,18 @@ sub get_config_module_instance {
   return $self->config->{module}{$module}{instance}{$name};
 }
 
+sub get_config_module_global {
+  my ($self, $module) = @_;
+
+  $self->debug("get_config_module_global() called.");
+
+  $self->debug("get_config_module_global() finished.");
+
+  return $self->config->{module}{$module};
+}
+
 sub load_instance {
-  my ($self, $module, $name, $config) = @_;
+  my ($self, $module, $name, $config, $global_config) = @_;
 
   $self->debug("load_instance() called.");
   $self->debug("load_instance(): Loading ".$name."...");
@@ -216,7 +228,7 @@ sub load_instance {
     } else {
       $self->debug("load_instance(): Loaded $module.");
       $self->debug("load_instance(): Attempting to start $name (Ham::Lid::$module)...");
-      if($m->new($self, $name, $config->{options}[0])) {
+      if($m->new($self, $name, $config, $global_config)) {
         $self->debug("load_instance(): Started $name.");
         $self->debug("load_instance() finished.");
         return 1;
@@ -249,7 +261,8 @@ sub load_modules {
       $self->debug("Found instance with name '".$instance."'...");
       # Look for module instance configuration
       my $config = $self->get_config_module_instance($module, $instance);
-      $self->load_instance($module, $instance, $config);
+      my $global_config = $self->get_config_module_global($module);
+      $self->load_instance($module, $instance, $config, $global_config);
     }
   }
 #  $poe_kernel->post($poe_kernel->alias_resolve('dxcluster_gb7mbc'), 'shutdown');
@@ -278,9 +291,9 @@ sub input {
     return 0;
   }
 
-  $self->debug("I am ".$self->id.", message is for ".$data->destination);
+  $self->debug("I am ".$self->name.", message is for ".$data->destination);
 
-  if($data->destination eq $self->id) {
+  if($data->destination eq $self->name) {
     $self->debug("Message is for me.");
     $self->process($data);
   } else {
@@ -341,8 +354,8 @@ sub register {
   $self->debug("register() called.");
   $self->debug("registration from $id ($type) with name = $name, manager = $manager.");
 
-  $self->{register_table}{$id} = {'id' => $id, 'name' => $name, 'type' => $type, 'manager' => $manager, 'state' => $state, 'buffer' => $buffer};
-  $self->out($self->create_message($id, "register_ok"));
+  $self->{register_table}{$name} = {'id' => $id, 'name' => $name, 'type' => $type, 'manager' => $manager, 'state' => $state, 'buffer' => $buffer};
+  $self->out($self->create_message($name, "register_ok"));
 
   #$self->debug("Dumping out register_table...");
   #print Dumper($self->{register_table});
@@ -369,7 +382,7 @@ sub unregister {
 sub create_message {
   my ($self, $destination, $type, $data) = @_;
 
-  my $m = new Ham::Lid::Message({'message' => $data, 'type' => $type, 'source' => $self->id, 'destination' => $destination});
+  my $m = new Ham::Lid::Message({'message' => $data, 'type' => $type, 'source' => 'manager', 'destination' => $destination});
 
   return $m;
 }
@@ -385,9 +398,9 @@ sub out {
   $self->debug("out() called.");
   $self->debug("Sending message to ".$msg->destination." of type ".$msg->type.".");
   # We're the manager, so we have to find the relevant buffer
-  my $name = $self->{register_table}{$msg->destination}{name};
-  $self->debug("Name is $name");
-  $poe_kernel->post($poe_kernel->alias_resolve($name), 'in', $msg);
+#  my $name = $self->{register_table}{$msg->destination}{name};
+#  $self->debug("Name is $name");
+  $poe_kernel->post($poe_kernel->alias_resolve($msg->destination), 'in', $msg);
   $self->debug("out() finished.");
 }
 

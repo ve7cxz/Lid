@@ -73,7 +73,7 @@ sub new {
     croak "No manager passed to client.";
   } else {
     $self->manager($manager);
-    $self->debug("[".$self->id."] Manager passed (ID ".$manager->id.")");
+    $self->debug("[".$self->name."] Manager passed (ID ".$manager->id.")");
   }
 
   if(!defined($name)) {
@@ -81,7 +81,7 @@ sub new {
     croak "No 'name' passed to client.";
   } else {
     $self->name($name);
-    $self->debug("[".$self->id."] 'Name' passed (".$name.")");
+    $self->debug("[".$self->name."] 'Name' passed (".$name.")");
   }
 
   if(!defined($socket)) {
@@ -89,7 +89,7 @@ sub new {
     croak "No socket passed to client.";
   } else {
     $self->socket($socket);
-    $self->debug("[".$self->id."] Socket passed.");
+    $self->debug("[".$self->name."] Socket passed.");
   }
 
   # Create buffers to hold data
@@ -99,12 +99,12 @@ sub new {
   $self->session(POE::Session->create(
     inline_states => {
       _start => sub { 
-        $self->debug("[".$self->id."] _start triggered");
+        $self->debug("[".$self->name."] _start triggered");
 
         $_[KERNEL]->alias_set($self->name);
 
-        $self->debug("[".$self->id."] Registering with manager...");
-        $self->out($self->create_message($self->manager->id, "register", {'name' => $self->name, 'type' => ref $self, 'manager' => $self->manager->id }));
+        $self->debug("[".$self->name."] Registering with manager...");
+        $self->out($self->create_message('manager', "register", {'name' => $self->name, 'type' => ref $self, 'manager' => 'manager' }));
 
         my $io_wheel = POE::Wheel::ReadWrite->new(
           Handle => $socket,
@@ -116,49 +116,49 @@ sub new {
         $_[KERNEL]->yield('tick');
       },
       on_client_input => sub {
-        $self->debug("[".$self->id."] on_client_input triggered");
+        $self->debug("[".$self->name."] on_client_input triggered");
         my ($input, $wheel_id) = @_[ARG0, ARG1];
         $self->client_in($input);
       },
       on_client_error => sub {
-        $self->debug("[".$self->id."] on_client_error triggered");
+        $self->debug("[".$self->name."] on_client_error triggered");
         my $wheel_id = $_[ARG3];
         $self->client_error($wheel_id);
         delete $_[HEAP]{client}{$wheel_id};
         $_[KERNEL]->yield('shutdown');
       },
       tick => sub {
-        $self->debug("[".$self->id."] tick triggered");
+        $self->debug("[".$self->name."] tick triggered");
         $_[KERNEL]->delay(tick => 1);
       },
       in => sub {
-        $self->debug("[".$self->id."] in triggered");
+        $self->debug("[".$self->name."] in triggered");
         $self->buffer->in($_[ARG0]);
       },
       shutdown => sub {
-        $self->debug("[".$self->id."] shutdown triggered");
-        $self->debug("[".$self->id."] Session shutdown called.");
+        $self->debug("[".$self->name."] shutdown triggered");
+        $self->debug("[".$self->name."] Session shutdown called.");
         my ($kernel, $session, $heap) = @_[KERNEL, SESSION, HEAP];
-        $self->debug("[".$self->id."] Deleting from heap...");
+        $self->debug("[".$self->name."] Deleting from heap...");
         delete $heap->{client};
         $self->wheel(undef);
-        $self->debug("[".$self->id."] Removing alias...");
+        $self->debug("[".$self->name."] Removing alias...");
         $kernel->alias_remove($self->name);
-        $self->debug("[".$self->id."] Disabling tick...");
+        $self->debug("[".$self->name."] Disabling tick...");
         $kernel->delay(tick => undef);
         $self->session(undef);
       },
       _stop   => sub {
-        $self->debug("[".$self->id."] _stop triggered");
-        $self->debug("[".$self->id."] Session stopped.");
+        $self->debug("[".$self->name."] _stop triggered");
+        $self->debug("[".$self->name."] Session stopped.");
       },
     }
   ));
 
-  $self->debug("[".$self->id."] new() called.");
-  $self->debug("[".$self->id."] ID is ".$self->id);
-  $self->debug("[".$self->id."] Name is ".$self->name);
-  $self->debug("[".$self->id."] Buffer is ".$self->buffer->id);
+  $self->debug("[".$self->name."] new() called.");
+  $self->debug("[".$self->name."] ID is ".$self->id);
+  $self->debug("[".$self->name."] Name is ".$self->name);
+  $self->debug("[".$self->name."] Buffer is ".$self->buffer->id);
 
   return $self;
 }
@@ -166,71 +166,71 @@ sub new {
 sub msg {
   my ($self, $msg) = @_;
 
-  $self->debug("[".$self->id."] msg() called.");
+  $self->debug("[".$self->name."] msg() called.");
 
-  $self->debug("[".$self->id."] msg is ".Dumper($msg));
+  $self->debug("[".$self->name."] msg is ".Dumper($msg));
 }
 
 sub client_in {
   my ($self, $msg) = @_;
-  $self->debug("[".$self->id."] client_in() called.");
-  $self->debug("[".$self->id."] Message is $msg");
+  $self->debug("[".$self->name."] client_in() called.");
+  $self->debug("[".$self->name."] Message is $msg");
   my $f = Ham::Lid::Filter->new("XML", $msg);
   if($f->decode eq 0)
   {
     $self->error("Error decoding message!");
     return 0;
   }
-  $self->debug("[".$self->id."] Decoded message is ".$f->decode);
+  $self->debug("[".$self->name."] Decoded message is ".$f->decode);
   $self->out($f->decode);
-  $self->debug("[".$self->id."] client_in() finished.");
+  $self->debug("[".$self->name."] client_in() finished.");
   return;
 }
 
 sub client_error {
   my ($self) = @_;
-  $self->debug("[".$self->id."] client_error() called.");
-  $self->debug("[".$self->id."] Unregistering from manager...");
+  $self->debug("[".$self->name."] client_error() called.");
+  $self->debug("[".$self->name."] Unregistering from manager...");
   $self->out($self->create_message($self->manager->id, "unregister"));
-  $self->debug("[".$self->id."] Unregister event sent.");
-  $self->debug("[".$self->id."] client_error() finished.");
+  $self->debug("[".$self->name."] Unregister event sent.");
+  $self->debug("[".$self->name."] client_error() finished.");
 }
 
 sub client_out {
   my ($self, $msg) = @_;
-   $self->debug("[".$self->id."] client_out() called.");
-   $self->debug("[".$self->id."] Message is $msg");
+   $self->debug("[".$self->name."] client_out() called.");
+   $self->debug("[".$self->name."] Message is $msg");
    my $f = Ham::Lid::Filter->new("XML", $msg);
    $self->wheel->put($f->encode);
-   $self->debug("[".$self->id."] client_out() finished.");
+   $self->debug("[".$self->name."] client_out() finished.");
 }
 
 sub in {
   my ($self, $data) = @_;
 
-  $self->debug("[".$self->id."] in() called.");
+  $self->debug("[".$self->name."] in() called.");
   if($data->destination eq $self->id) {
-    $self->debug("[".$self->id."] Message is for me.");
+    $self->debug("[".$self->name."] Message is for me.");
     $self->process($data);
   } else {
-    $self->debug("[".$self->id."] Message is not for me.");
+    $self->debug("[".$self->name."] Message is not for me.");
     $self->out($data);
   }
-  $self->debug("[".$self->id."] in() finished.");
+  $self->debug("[".$self->name."] in() finished.");
 }
 
 sub process {
   my ($self, $data) = @_;
 
-  $self->debug("[".$self->id."] process() called.");
-  $self->debug("[".$self->id."] Message from ".$data->source." of type ".$data->type);
-  $self->debug("[".$self->id."] Command is of type ".$data->type);
+  $self->debug("[".$self->name."] process() called.");
+  $self->debug("[".$self->name."] Message from ".$data->source." of type ".$data->type);
+  $self->debug("[".$self->name."] Command is of type ".$data->type);
   $self->client_out($data);
   switch ($data->type) {
     case "register_ok" {
-      $self->debug("[".$self->id."] Registration successful.");
+      $self->debug("[".$self->name."] Registration successful.");
       $self->registered(1);
-      $self->debug("[".$self->id."] Registration done.");
+      $self->debug("[".$self->name."] Registration done.");
     }
     case "ping" {
       $self->debug("Creating 'pong' message...");
@@ -242,38 +242,38 @@ sub process {
     case "pong" {
     }
   }
-  $self->debug("[".$self->id."] process() finished.");
+  $self->debug("[".$self->name."] process() finished.");
 }
 
 sub create_message {
   my ($self, $destination, $type, $data) = @_;
-  $self->debug("[".$self->id."] create_message() called.");
+  $self->debug("[".$self->name."] create_message() called.");
   
   my $msg = new Ham::Lid::Message({'message' => $data, 'type' => $type, 'source' => $self->id, 'destination' => $destination});
 
-  $self->debug("[".$self->id."] create_message() finished.");
+  $self->debug("[".$self->name."] create_message() finished.");
   return $msg;
 }
 
 sub out {
 
   my ($self, $msg) = @_;
-  $self->debug("[".$self->id."] out() called.");
+  $self->debug("[".$self->name."] out() called.");
 
   $self->debug("ID    : ".$msg->id);
   $self->debug("SOURCE: ".$msg->source);
   $self->debug("DEST  : ".$msg->destination);
   $self->debug("TYPE  : ".$msg->type);
 
-  if($msg->destination eq $self->id)
+  if($msg->destination eq $self->name)
   {
-    $self->debug("[".$self->id."] Destination is the connected client.");
+    $self->debug("[".$self->name."] Destination is the connected client.");
     $self->client_out($msg);
   } else {
-    $self->debug("[".$self->id."] Destination is not the connected client. I am ".$self->id.", and the destination is ".$msg->destination.".");
+    $self->debug("[".$self->name."] Destination is not the connected client. I am ".$self->name.", and the destination is ".$msg->destination.".");
     $poe_kernel->post($poe_kernel->alias_resolve('manager'), 'in', $msg);
   }
-  $self->debug("[".$self->id."] out() finished.");
+  $self->debug("[".$self->name."] out() finished.");
 }
 
 1;
